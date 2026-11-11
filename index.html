@@ -1022,7 +1022,7 @@ var CORE = (function () {
 
   function isDirectorReq(store, r) { var d = lc(store.settings().directorEmail); return !!d && lc(r.email) === d; }
   function isExecReq(store, r) { var s = store.settings(), e = lc(r.email); return isDirectorReq(store, r) || normUnit(r.unit) === EXEC_UNIT || (s.units || []).some(function (u) { return lc(u.deputyEmail) === e; }); }
-  function routeOf(store, r) { var dir = isDirectorReq(store, r); return { dep: !isExecReq(store, r) && !!approversOf(store, 'DEPUTY', r).length, dir: !dir, uni: dir || r.area === 'abroad', directorReq: dir }; }
+  function routeOf(store, r) { var dir = isDirectorReq(store, r); return { dep: !isExecReq(store, r) && !!approversOf(store, 'DEPUTY', r).length, dir: true, uni: r.area === 'abroad', directorReq: dir }; }
   function approversOf(store, step, r) {
     var s = store.settings();
     switch (step) {
@@ -1041,7 +1041,7 @@ var CORE = (function () {
 
   function firstStep(store, r) { return nextStepAfter(store, r, null); }
   function nextStepAfter(store, r, cur) {
-    var order = isDirectorReq(store, r) ? ['UNI'] : ['DEPUTY', 'DIRECTOR'];
+    var order = ['DEPUTY', 'DIRECTOR'];
     var i = cur ? order.indexOf(cur) + 1 : 0;
     for (; i < order.length; i++) {
       var st = order[i];
@@ -1278,6 +1278,7 @@ var CORE = (function () {
   function nameOf(store, email) { var u = staffBy(store, email); return u ? u.name : email; }
   function notifyStep(store, r) {
     var to = approversOf(store, r.status, r); if (!to.length) return;
+    if (r.status === 'DIRECTOR' && isDirectorReq(store, r)) return;
     var subj, head, act;
     var theme = 'info', title = '', extra = '';
     if (['DEPUTY', 'DIRECTOR'].indexOf(r.status) >= 0) {
@@ -1287,15 +1288,15 @@ var CORE = (function () {
         subj = (r.resubmitted ? '[แก้ไขแล้ว] ' : '') + 'ขอความอนุเคราะห์พิจารณาคำขออนุมัติเข้ารับการฝึกอบรม เลขที่ ' + r.docNo;
         head = 'เรียน ' + esc(nameOf(store, approversOf(store, 'DEPUTY', r)[0])) + '<br>' + esc(r.name) + ' ขออนุมัติเข้ารับการฝึกอบรม ขอความอนุเคราะห์ท่านพิจารณาให้ความเห็นชอบ';
       } else {
-        theme = 'director'; title = 'รองผู้อำนวยการเห็นชอบแล้ว รอการอนุมัติของท่าน';
-        subj = 'รองผู้อำนวยการเห็นชอบแล้ว ขอความอนุเคราะห์พิจารณาอนุมัติ เลขที่ ' + r.docNo;
-        head = 'เรียน ผู้อำนวยการศูนย์สัตว์ทดลอง<br>คำขออนุมัติเข้ารับการฝึกอบรมของ ' + esc(r.name) + ' ผ่านการพิจารณาของรองผู้อำนวยการแล้ว ขอความอนุเคราะห์ท่านพิจารณาอนุมัติ';
+        theme = 'director'; title = dep ? 'รองผู้อำนวยการเห็นชอบแล้ว รอการอนุมัติของท่าน' : 'คำขออนุมัติเข้ารับการฝึกอบรม รอการอนุมัติของท่าน';
+        subj = (dep ? 'รองผู้อำนวยการเห็นชอบแล้ว ' : '') + 'ขอความอนุเคราะห์พิจารณาอนุมัติ เลขที่ ' + r.docNo;
+        head = 'เรียน ผู้อำนวยการศูนย์สัตว์ทดลอง<br>คำขออนุมัติเข้ารับการฝึกอบรมของ ' + esc(r.name) + (dep ? ' ผ่านการพิจารณาของรองผู้อำนวยการแล้ว' : '') + ' ขอความอนุเคราะห์ท่านพิจารณาอนุมัติ';
         if (dep && /เห็นชอบ/.test(dep.action)) extra += mailBox('#2E7D32', '#E8F5E9', '✓ ' + esc(dep.name) + ' เห็นชอบแล้ว', esc(dep.position || '') + ' · ' + thDateLong(String(dep.at).slice(0, 10)) + ' เวลา ' + String(dep.at).slice(11, 16) + ' น.' + (dep.comment ? '<br>ความเห็น: ' + esc(dep.comment) : ''));
       }
       if (r.resubmitted && r.returnInfo) extra += mailBox('#E65100', '#FFF3E0', 'ข้อสังเกตครั้งก่อน (' + esc(r.returnInfo.name) + ')', esc(r.returnInfo.comment)) + mailBox('#00577F', '#E6F5FD', 'คำชี้แจงของผู้ขอ', esc(r.response || ''));
       act = r.status === 'DEPUTY' ? 'เข้าสู่ระบบเพื่อพิจารณา' : 'เข้าสู่ระบบเพื่ออนุมัติ';
       head += '<br>ขอความอนุเคราะห์พิจารณาภายใน ' + (store.settings().reminderDays || 3) + ' วันทำการ';
-    } else if (r.status === 'UNI' && r.directorReq) {
+    } else if (r.status === 'UNI' && r.directorReq && !r.approvedAt) {
       subj = 'คำขอของผู้อำนวยการศูนย์ เลขที่ ' + r.docNo + ' เสนอผู้บริหารมหาวิทยาลัยพิจารณา'; head = 'เรียน งานธุรการ<br>ผู้อำนวยการศูนย์ยื่นคำขออนุมัติเข้ารับการฝึกอบรม โปรดเสนอผู้บริหารมหาวิทยาลัยพิจารณา แล้วบันทึกผลในระบบ'; act = 'เข้าสู่ระบบเพื่อบันทึกผล';
     } else if (r.status === 'UNI') {
       subj = 'คำขอเลขที่ ' + r.docNo + ' ผู้อำนวยการศูนย์เห็นควรเสนอผู้บริหารมหาวิทยาลัย'; head = 'เรียน งานธุรการ<br>ผู้อำนวยการศูนย์อนุมัติให้เสนอผู้บริหารมหาวิทยาลัยพิจารณา โปรดจัดพิมพ์ TR-01 เสนอตามขั้นตอน และบันทึกผลการพิจารณาในระบบ'; act = 'เข้าสู่ระบบเพื่อบันทึกผล';
@@ -1485,7 +1486,7 @@ var CORE = (function () {
     if (['PLAN', 'DIRECTOR', 'DEPUTY'].indexOf(r.status) >= 0 || res.canAct) { var bo = budgetOK(store, r); res.budget = { avail: bo.avail, ok: bo.ok, remaining: bo.b.remaining }; }
     res.isFinance = hasRole(user, 'finance');
     if (r.status === 'DRAFT' && lc(r.email) === me) res.paperDep = firstStep(store, r) === 'DEPUTY';
-    res.signers = { DEPUTY: firstStep(store, r) === 'DEPUTY' || histHas(r, 'DEPUTY') ? signerOf(store, 'DEPUTY', r) : null, DIRECTOR: isDirectorReq(store, r) ? null : signerOf(store, 'DIRECTOR', r) };
+    res.signers = { DEPUTY: firstStep(store, r) === 'DEPUTY' || histHas(r, 'DEPUTY') ? signerOf(store, 'DEPUTY', r) : null, DIRECTOR: signerOf(store, 'DIRECTOR', r) };
     res.budgetSnap = r.budgetSnap || budgetSnap(store, r);
     res.route = routeOf(store, r);
     res.meetingText = meetingLabel(r.meetingMonth || (r.endDate ? meetingAfter(r.endDate, s, ctx.today) : ''));
@@ -1501,7 +1502,7 @@ var CORE = (function () {
     var bo = budgetOK(store, Object.assign ? Object.assign({}, r, { estTotal: v.costs.total }) : r);
     return { errors: v.errors, warnings: v.warnings, costs: v.costs, lead: r.startDate ? diffDays(ctx.today, r.startDate) : null,
       quotaUsed: quotaUsed(store, me, fy, r.id), quotaMax: num(s.quota) || 2, avail: bo.avail,
-      budgetSnap: budgetSnap(store, Object.assign({}, r, { estTotal: v.costs.total })), route: routeOf(store, r), signers: { DEPUTY: firstStep(store, r) === 'DEPUTY' ? signerOf(store, 'DEPUTY', r) : null, DIRECTOR: isDirectorReq(store, r) ? null : signerOf(store, 'DIRECTOR', r) },
+      budgetSnap: budgetSnap(store, Object.assign({}, r, { estTotal: v.costs.total })), route: routeOf(store, r), signers: { DEPUTY: firstStep(store, r) === 'DEPUTY' ? signerOf(store, 'DEPUTY', r) : null, DIRECTOR: signerOf(store, 'DIRECTOR', r) },
       meeting: r.endDate ? meetingLabel(meetingAfter(r.endDate, s, ctx.today)) : '', approvers: ['DEPUTY', 'DIRECTOR'].map(function (st) { return { step: st, title: STEP_TITLE[st], names: approversOf(store, st, r).map(function (e) { return nameOf(store, e); }) }; }) };
   };
   function fillOwner(data, user) {
@@ -1559,9 +1560,8 @@ var CORE = (function () {
         r.submittedAt = nowStr();
         var earliest = meetingAfter(r.endDate, s, ctx.today);
         r.meetingMonth = r.meetingPick && r.meetingPick >= earliest ? r.meetingPick : earliest;
-        r.needUni = r.area === 'abroad' || isDirectorReq(store, r); r.directorReq = isDirectorReq(store, r); r.transferMethods = ['meeting'];
+        r.needUni = r.area === 'abroad'; r.directorReq = isDirectorReq(store, r); r.transferMethods = ['meeting'];
         r.budgetSnap = budgetSnap(store, r);
-        if (r.directorReq) { var boD = budgetOK(store, r); if (!boD.ok) throw new Error('งบประมาณคงเหลือไม่เพียงพอ (คงเหลือ ' + money(boD.avail) + ' บาท)'); }
         var wasRet = r.status === 'RETURNED'; r.resubmitted = wasRet; if (wasRet) r.resubmitCount = (r.resubmitCount || 0) + 1;
         pushHist(r, me, user, wasRet ? 'ยื่นคำขอที่แก้ไขแล้ว พร้อมคำชี้แจง' : 'ยื่นคำขอ', wasRet ? r.response : '', 'SUBMIT');
         r.status = firstStep(store, r);
@@ -1598,7 +1598,7 @@ var CORE = (function () {
         } else if (step === 'UNI') {
           label = 'ผู้บริหารมหาวิทยาลัยอนุมัติ' + (opts.uniRef ? ' (' + opts.uniRef + ')' : '');
           r.uni = { result: 'approve', ref: opts.uniRef || '', by: user.name, at: nowStr(), approver: opts.uniApprover || '' };
-          if (r.directorReq) { r.caseApproved = !!(r.late || r.overQuota); r.approvedAt = nowStr(); }
+          if (r.directorReq && !r.approvedAt) { r.caseApproved = !!(r.late || r.overQuota); r.approvedAt = nowStr(); }
         } else {
           var cc0 = checkCosts(r, s); if (cc0.errors.length) throw new Error('ค่าใช้จ่ายไม่เป็นไปตามหมวด 7: ' + cc0.errors.join(' / ') + ' โปรดส่งกลับให้ผู้ขอแก้ไข');
           r.estTotal = cc0.total; label = 'เห็นชอบ';
@@ -1650,7 +1650,7 @@ var CORE = (function () {
       if (v.errors.length) { var e0 = new Error(v.errors.join('\n')); e0.list = v.errors; throw e0; }
       var cc = checkCosts(r, s); if (cc.errors.length) throw new Error('ค่าใช้จ่ายไม่เป็นไปตามหมวด 7: ' + cc.errors.join(' / '));
       r.estTotal = cc.total;
-      var needDep = firstStep(store, r) === 'DEPUTY', dReq = isDirectorReq(store, r), needDir = !dReq, abroad = r.area === 'abroad' || dReq;
+      var needDep = firstStep(store, r) === 'DEPUTY', dReq = isDirectorReq(store, r), needDir = true, abroad = r.area === 'abroad';
       var isD = function (x) { return /^\d{4}-\d{2}-\d{2}$/.test(String(x || '')); };
       var miss = [];
       if (needDep && !isD(p.deputyDate)) miss.push('วันที่รองผู้อำนวยการลงนาม');
@@ -2509,7 +2509,7 @@ function drawActions(r, d) {
   if ($('#bCancel')) $('#bCancel').onclick = function () { var why = st === 'DRAFT' ? '' : prompt('ระบุเหตุผลการยกเลิกคำขอ'); if (why === null) return; busy(true); call('cancel', r.id, why).then(function () { done('ยกเลิกคำขอแล้ว'); }).catch(function (e) { busy(false); alert(errText(e)); }); };
 }
 function d_today() { return B.today; }
-function routeText(rt) { rt = rt || {}; return rt.directorReq ? 'ระบบส่งเรื่องให้งานธุรการ เสนอผู้บริหารมหาวิทยาลัยพิจารณา' : rt.dep === false ? 'ระบบส่งอีเมลถึงผู้อำนวยการศูนย์เพื่ออนุมัติ' : 'ระบบส่งอีเมลถึงรองผู้อำนวยการ แล้วต่อไปที่ผู้อำนวยการ'; }
+function routeText(rt) { rt = rt || {}; return rt.directorReq ? 'เมื่อส่งแล้ว ท่านกดอนุมัติคำขอของตนเองในระบบได้ทันที' + (rt.uni ? ' แล้วระบบส่งเรื่องให้งานธุรการเสนอผู้บริหารมหาวิทยาลัย' : '') : rt.dep === false ? 'ระบบส่งอีเมลถึงผู้อำนวยการศูนย์เพื่ออนุมัติ' : 'ระบบส่งอีเมลถึงรองผู้อำนวยการ แล้วต่อไปที่ผู้อำนวยการ'; }
 var PAPER_SCAN = null;
 function fileChip(f, rmId) { return '<div class="ofile"><span class="ic">' + ic('report') + '</span><b>' + esc(f.name) + '<small>' + (/pdf/.test(f.mime) ? 'PDF' : 'ภาพ') + (f.size ? ' · ' + (f.size < 1048576 ? Math.max(1, Math.round(f.size / 1024)) + ' KB' : (f.size / 1048576).toFixed(1) + ' MB') : '') + '</small></b><button class="btn s r" id="' + rmId + '">นำออก</button></div>'; }
 function pickFile(inp, lim, cb) {
